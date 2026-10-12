@@ -1,38 +1,47 @@
 package com.stadiolinks.kitabu.ui.bookings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.stadiolinks.kitabu.data.local.BookingWithBook
 import com.stadiolinks.kitabu.domain.BookingStatus
 import com.stadiolinks.kitabu.domain.daysRemaining
 import com.stadiolinks.kitabu.domain.formatDate
+import com.stadiolinks.kitabu.ui.components.BookCover
 import com.stadiolinks.kitabu.ui.components.EmptyState
-import com.stadiolinks.kitabu.ui.components.NoInsets
 import com.stadiolinks.kitabu.ui.components.StatusBadge
 import com.stadiolinks.kitabu.ui.theme.ActiveBlue
+import com.stadiolinks.kitabu.ui.theme.AvailableGreen
 import com.stadiolinks.kitabu.ui.theme.PendingAmber
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookingsScreen(
     bookings: List<BookingWithBook>,
@@ -42,18 +51,33 @@ fun BookingsScreen(
     onConfirmPickup: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val pending = bookings.count { it.status == BookingStatus.PENDING }
+    val active = bookings.count { it.status == BookingStatus.ACTIVE }
+
     Column(modifier = modifier) {
-        TopAppBar(
-            title = { Text("My Reservations", fontWeight = FontWeight.Bold) },
-            windowInsets = NoInsets
-        )
+        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp)) {
+            Text(
+                text = "My Reservations",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = if (bookings.isEmpty()) "Nothing reserved yet" else "$active active · $pending awaiting pickup",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         if (bookings.isEmpty()) {
-            EmptyState("No active reservations.\nReserve a book from the catalog to see it here.")
+            EmptyState(
+                icon = Icons.Default.DateRange,
+                title = "No active reservations",
+                message = "Reserve a book from the catalog and it will show up here."
+            )
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(bookings, key = { it.bookingId }) { booking ->
                     BookingCard(
@@ -78,76 +102,127 @@ private fun BookingCard(
     onConfirmPickup: () -> Unit
 ) {
     val isPending = booking.status == BookingStatus.PENDING
-    val isActive = booking.status == BookingStatus.ACTIVE
     val days = daysRemaining(booking.returnDeadline)
-    val buttonPadding = PaddingValues(horizontal = 8.dp)
+    val urgencyColor = when {
+        days < 0 -> MaterialTheme.colorScheme.error
+        days <= 2 -> PendingAmber
+        else -> AvailableGreen
+    }
+    val total = (booking.returnDeadline - booking.bookingDate).coerceAtLeast(1L)
+    val elapsed = (System.currentTimeMillis() - booking.bookingDate).coerceIn(0L, total)
+    val progress = elapsed.toFloat() / total.toFloat()
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(booking.title, style = MaterialTheme.typography.titleMedium)
-                    Text(booking.author, style = MaterialTheme.typography.bodyMedium)
+            // Book summary
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                BookCover(
+                    title = booking.title,
+                    category = booking.category,
+                    modifier = Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(12.dp)),
+                    letterSize = 26.sp
+                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        booking.category,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        text = booking.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = booking.author,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Reserved by ${booking.userName}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    StatusBadge(
+                        text = if (isPending) "Awaiting pickup" else "Active",
+                        color = if (isPending) PendingAmber else ActiveBlue
                     )
                 }
-                StatusBadge(
-                    text = if (isPending) "Pending" else "Active",
-                    color = if (isPending) PendingAmber else ActiveBlue
+            }
+
+            // Dates and time left
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    DateColumn("Reserved", formatDate(booking.bookingDate), Modifier.weight(1f))
+                    DateColumn("Return by", formatDate(booking.returnDeadline), Modifier.weight(1f))
+                }
+                Text(
+                    text = daysLabel(days),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = urgencyColor
+                )
+                LinearProgressIndicator(
+                    progress = progress,
+                    color = urgencyColor,
+                    trackColor = urgencyColor.copy(alpha = 0.15f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
                 )
             }
 
-            Text("Reserved by ${booking.userName}", style = MaterialTheme.typography.bodySmall)
-            Text("Reserved on: ${formatDate(booking.bookingDate)}", style = MaterialTheme.typography.bodyMedium)
-            Text("Return by: ${formatDate(booking.returnDeadline)}", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = daysLabel(days),
-                style = MaterialTheme.typography.titleSmall,
-                color = if (days < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-            )
-
+            // Lifecycle actions depend on the status
             if (isPending) {
-                FilledTonalButton(onClick = onConfirmPickup, modifier = Modifier.fillMaxWidth()) {
-                    Text("Confirm pickup")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = onConfirmPickup,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1.4f)
+                    ) { Text("Confirm pickup", maxLines = 1) }
+                    OutlinedButton(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel", maxLines = 1) }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = onRenew,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Renew", maxLines = 1) }
+                    FilledTonalButton(
+                        onClick = onReturn,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Return", maxLines = 1) }
                 }
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onRenew,
-                    enabled = isActive,
-                    contentPadding = buttonPadding,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Renew", maxLines = 1) }
-
-                OutlinedButton(
-                    onClick = onReturn,
-                    enabled = isActive,
-                    contentPadding = buttonPadding,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Return", maxLines = 1) }
-
-                OutlinedButton(
-                    onClick = onCancel,
-                    enabled = isPending,
-                    contentPadding = buttonPadding,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Cancel", maxLines = 1) }
-            }
         }
+    }
+}
+
+@Composable
+private fun DateColumn(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(text = value, style = MaterialTheme.typography.titleSmall)
     }
 }
 
